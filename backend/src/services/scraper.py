@@ -202,11 +202,15 @@ class RSSScraper:
             for topic, articles in all_articles.items()
         }
         return recent
-
-
 # ============================================================
-#              Exemple d’utilisation
+#              Exemple d’utilisation amélioré
 # ============================================================
+
+from rich.console import Console
+from rich.table import Table
+from rich.markdown import Markdown
+
+console = Console()
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -217,8 +221,18 @@ if __name__ == "__main__":
     results = scraper.scrape_all_topics(topics)
 
     for topic, items in results.items():
-        print(f"\n=== {topic.upper()} ===")
+        console.rule(f"[bold blue]{topic.upper()}[/bold blue]")
+        
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Titre", style="cyan", no_wrap=True)
+        table.add_column("Source", style="green")
+        table.add_column("Publié le", style="yellow")
+        table.add_column("URL", style="blue", overflow="fold")
+        
         for a in items:
-            print(f"- {a.title}")
-            print(f"  Source: {a.source}")
-            print(f"  URL: {a.url}")
+            pub_date = a.published_date.strftime("%d/%m/%Y %H:%M") if a.published_date else "N/A"
+            # Option pour rendre l'URL cliquable dans certains terminaux ou IDE
+            url_md = f"[link={a.url}]Lien[/link]"
+            table.add_row(a.title, a.source, pub_date, url_md)
+        
+        console.print(table)
