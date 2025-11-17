@@ -61,15 +61,16 @@ class RSSScraper:
     # Flux RSS par thématique
     RSS_FEEDS = {
         "économie": {
-            "lesechos": "https://www.lesechos.fr/rss/les-echos-economie.xml",
-            "latribune": "https://www.latribune.fr/rss/rubriques/economie.xml",
-            "challenges": "https://www.challenges.fr/rss.xml",
+            "lesechos": "https://news.google.com/rss/search?q=site:lesechos.fr+économie&hl=fr&gl=FR&ceid=FR:fr",
+            "latribune": "https://news.google.com/rss/search?q=site:latribune.fr+économie&hl=fr&gl=FR&ceid=FR:fr",
+            "challenges": "https://news.google.com/rss/search?q=site:challenges.fr+économie&hl=fr&gl=FR&ceid=FR:fr"
         },
         "climat": {
             "lemonde_planete": "https://www.lemonde.fr/planete/rss_full.xml",
             "reporterre": "https://reporterre.net/spip.php?page=backend",
-            "liberation_env": "https://www.liberation.fr/arc/outboundfeeds/rss/category/environnement/",
+            "liberation_env": "https://www.liberation.fr/arc/outboundfeeds/rss/category/environnement/"
         },
+
         "politique française": {
             "lemonde_pol": "https://www.lemonde.fr/politique/rss_full.xml",
             "liberation_pol": "https://www.liberation.fr/arc/outboundfeeds/rss/category/politique/",
@@ -212,7 +213,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
 
     scraper = RSSScraper(max_articles_per_topic=3)
-    topics = ["économie", "climat"]
+    topics = ["économie", "climat", "politique française", "géopolitique"]
 
     results = scraper.scrape_all_topics(topics)
 
