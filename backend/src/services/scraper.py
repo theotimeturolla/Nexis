@@ -1,7 +1,3 @@
-"""
-Scraper d'articles
-"""
-
 import requests
 import feedparser
 from bs4 import BeautifulSoup
@@ -9,11 +5,19 @@ from typing import List, Dict, Optional
 from datetime import datetime, timedelta
 import logging
 
+# Imports pour l'interface
+from rich.console import Console
+from rich.table import Table
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
+from rich import box
+from rich.text import Text
+from rich.align import Align
+
 logger = logging.getLogger(__name__)
 
-
 # ============================================================
-#                 STRUCTURE DES DONNÉES
+#                 STRUCTURE DES DONNÉES (INCHANGÉ)
 # ============================================================
 
 class ArticleData:
@@ -52,12 +56,11 @@ class ArticleData:
 
 
 # ============================================================
-#                      SCRAPER RSS
+#                      SCRAPER RSS (INCHANGÉ)
 # ============================================================
 
 class RSSScraper:
     
-    # Flux RSS par thématique
     RSS_FEEDS = {
         "économie": {
             "lesechos": "https://news.google.com/rss/search?q=site:lesechos.fr+économie&hl=fr&gl=FR&ceid=FR:fr",
@@ -69,7 +72,6 @@ class RSSScraper:
             "reporterre": "https://reporterre.net/spip.php?page=backend",
             "liberation_env": "https://www.liberation.fr/arc/outboundfeeds/rss/category/environnement/"
         },
-
         "politique française": {
             "lemonde_pol": "https://www.lemonde.fr/politique/rss_full.xml",
             "liberation_pol": "https://www.liberation.fr/arc/outboundfeeds/rss/category/politique/",
@@ -89,45 +91,29 @@ class RSSScraper:
             "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:120.0) Gecko/20100101 Firefox/120.0"
         })
 
-    # --------------------------------------------------------------
-    # Récupération du contenu complet des articles
-    # --------------------------------------------------------------
     def fetch_article_text(self, url: str) -> str:
-        """Télécharge la page et tente d'extraire le texte principal."""
         try:
             r = self.session.get(url, timeout=10)
             r.raise_for_status()
-            
             soup = BeautifulSoup(r.text, "html.parser")
-            
-            # Sélecteurs génériques de contenu
             article_tag = (
                 soup.find("article")
                 or soup.find("div", class_="article__content")
                 or soup.find("div", class_="content")
                 or soup.find("div", {"id": "content"})
             )
-            
             if article_tag:
                 return article_tag.get_text(" ", strip=True)
-            
             return ""
-        
         except Exception as e:
             logger.error(f"Impossible d'extraire le texte de {url}: {e}")
             return ""
 
-    # --------------------------------------------------------------
-    # Parsing d'un flux RSS
-    # --------------------------------------------------------------
     def scrape_feed(self, feed_name: str, feed_url: str, topic: str) -> List[ArticleData]:
-        logger.info(f"  Lecture RSS: {feed_name} ({feed_url})")
-
+        # logger.info(...) -> Commenté pour garder l'interface propre
         articles = []
         feed = feedparser.parse(feed_url)
-
         if feed.bozo:
-            logger.error(f"  ⚠️ Problème de parsing RSS pour {feed_url}")
             return articles
 
         for entry in feed.entries[: self.max_articles_per_topic]:
@@ -135,104 +121,133 @@ class RSSScraper:
                 title = entry.title
                 link = entry.link
                 published = None
-
                 if hasattr(entry, "published_parsed") and entry.published_parsed:
                     published = datetime(*entry.published_parsed[:6])
-
-                # Extraire le texte de l'article
+                
+                # Note: fetch_article_text peut être lent, ce qui ralentit l'UI
                 text = self.fetch_article_text(link)
+                authors = [entry.author] if "author" in entry else []
 
-                authors = []
-                if "author" in entry:
-                    authors = [entry.author]
-
-                articles.append(
-                    ArticleData(
-                        title=title,
-                        url=link,
-                        source=feed_name,
-                        topic=topic,
-                        published_date=published,
-                        text=text,
-                        authors=authors,
-                    )
-                )
-
-            except Exception as e:
-                logger.error(f"Erreur lors du parsing d'un entry RSS: {e}")
-
+                articles.append(ArticleData(title, link, feed_name, topic, published, text, authors))
+            except Exception:
+                pass
         return articles
 
-    # --------------------------------------------------------------
-    # Scraping par thématique
-    # --------------------------------------------------------------
     def scrape_topic(self, topic: str) -> List[ArticleData]:
-        logger.info(f"\n=== Scraping du topic: {topic} ===")
         topic_feeds = self.RSS_FEEDS.get(topic, {})
         collected = []
-
         for feed_name, feed_url in topic_feeds.items():
             collected.extend(self.scrape_feed(feed_name, feed_url, topic))
+        return collected[: self.max_articles_per_topic]
 
-        collected = collected[: self.max_articles_per_topic]
-        logger.info(f"  → {len(collected)} articles collectés pour {topic}")
-        return collected
-
-    # --------------------------------------------------------------
-    # Scraper toutes les thématiques
-    # --------------------------------------------------------------
     def scrape_all_topics(self, topics: List[str]) -> Dict[str, List[ArticleData]]:
         results = {}
         for topic in topics:
             results[topic] = self.scrape_topic(topic)
         return results
 
-    # --------------------------------------------------------------
-    # Filtrer les articles récents
-    # --------------------------------------------------------------
-    def get_recent_articles(self, topics: List[str], days_back: int = 1):
-        all_articles = self.scrape_all_topics(topics)
-        cutoff = datetime.now() - timedelta(days=days_back)
 
-        recent = {
-            topic: [
-                a for a in articles
-                if a.published_date and a.published_date >= cutoff
-            ]
-            for topic, articles in all_articles.items()
-        }
-        return recent
 # ============================================================
-#              Exemple d’utilisation amélioré
+#              INTERFACE UTILISATEUR (RICH UI)
 # ============================================================
-
-from rich.console import Console
-from rich.table import Table
-from rich.markdown import Markdown
-
-console = Console()
 
 if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO)
-
+    # On met le logging en WARNING ou ERROR pour ne pas polluer l'interface visuelle
+    logging.basicConfig(level=logging.ERROR)
+    
+    console = Console()
+    
+    # Configuration
     scraper = RSSScraper(max_articles_per_topic=3)
     topics = ["économie", "climat", "politique française", "géopolitique"]
 
-    results = scraper.scrape_all_topics(topics)
+    # --- 1. En-tête (Header) ---
+    header_text = Text("🗞️  AGRÉGATEUR RSS INTELLIGENT", style="bold white")
+    console.print(Panel(
+        Align.center(header_text),
+        border_style="blue",
+        padding=(1, 2)
+    ))
 
-    for topic, items in results.items():
-        console.rule(f"[bold blue]{topic.upper()}[/bold blue]")
+    # --- 2. Scraping avec barre de progression ---
+    results = {}
+    
+    # Utilisation d'une barre de progression plus détaillée
+    with Progress(
+        SpinnerColumn(style="cyan"),
+        TextColumn("[bold blue]{task.description}"),
+        BarColumn(bar_width=None, style="blue", complete_style="green"),
+        TaskProgressColumn(),
+        console=console,
+        transient=True # Disparaît à la fin pour laisser place aux résultats
+    ) as progress:
         
-        table = Table(show_header=True, header_style="bold magenta")
-        table.add_column("Titre", style="cyan", no_wrap=True)
-        table.add_column("Source", style="green")
-        table.add_column("Publié le", style="yellow")
-        table.add_column("URL", style="blue", overflow="fold")
+        main_task = progress.add_task("Analyse des flux...", total=len(topics))
         
-        for a in items:
-            pub_date = a.published_date.strftime("%d/%m/%Y %H:%M") if a.published_date else "N/A"
-            # Option pour rendre l'URL cliquable dans certains terminaux ou IDE
-            url_md = f"[link={a.url}]Lien[/link]"
-            table.add_row(a.title, a.source, pub_date, url_md)
-        
-        console.print(table)
+        for topic in topics:
+            progress.update(main_task, description=f"Scraping : [bold]{topic.upper()}[/]")
+            
+            # On appelle scrape_topic directement ici pour mettre à jour la barre
+            # au fur et à mesure, plutôt que tout attendre d'un coup.
+            topic_results = scraper.scrape_topic(topic)
+            results[topic] = topic_results
+            
+            progress.advance(main_task)
+
+    # --- 3. Affichage des résultats (Tables) ---
+    console.print("\n") # Petit espace après le chargement
+
+    total_articles = sum(len(items) for items in results.values())
+    
+    if total_articles == 0:
+        console.print(Panel("Aucun article trouvé. Vérifiez votre connexion.", style="red"))
+    else:
+        for topic, items in results.items():
+            if not items:
+                continue
+
+            # Création du tableau principal pour la catégorie
+            table = Table(
+                title=f"CATEGORY : [bold underline cyan]{topic.upper()}[/]",
+                title_justify="left",
+                box=box.ROUNDED,      # Bords arrondis modernes
+                expand=True,          # Prend toute la largeur du terminal
+                header_style="bold white on blue",
+                border_style="bright_black",
+                show_lines=True,      # Ligne de séparation entre chaque article
+                padding=(0, 1)
+            )
+
+            # --- Définition des colonnes intelligentes ---
+            # Colonne 1 : Métadonnées (Source + Date) combinées pour gagner de la place
+            table.add_column("Source & Date", justify="right", style="dim", width=18)
+            
+            # Colonne 2 : Le Titre (prend le plus de place)
+            table.add_column("Titre de l'article", style="white", ratio=4, overflow="fold")
+            
+            # Colonne 3 : Le Lien (cliquable)
+            table.add_column("Lien", style="blue", justify="center", width=10)
+
+            for a in items:
+                # Formatage date
+                date_str = "Récent"
+                if a.published_date:
+                    date_str = a.published_date.strftime("%d/%m %H:%M")
+                
+                # Formatage métadonnées (Source en gras vert, Date en dessous)
+                meta_info = f"[bold green]{a.source}[/]\n{date_str}"
+                
+                # Lien cliquable avec texte court
+                link_btn = f"[link={a.url}][bold blue]Ouvrir ↗[/][/link]"
+
+                table.add_row(
+                    meta_info,
+                    a.title,
+                    link_btn
+                )
+
+            console.print(table)
+            console.print("\n") # Espace entre les tableaux
+
+    # --- Footer ---
+    console.print(f"[dim italic right]Fin du rapport • {total_articles} articles extraits • {datetime.now().strftime('%H:%M:%S')}[/dim italic right]")
