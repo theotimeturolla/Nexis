@@ -20,10 +20,10 @@ def job():
 
     # 1. SCRAPING
     print("1️⃣  Phase de lecture des news...")
-    scraper = RSSScraper(max_articles_per_topic=3) # 3 articles max par sujet pour commencer
+    scraper = RSSScraper(max_articles_per_topic=4) # 3 articles max par sujet pour commencer
     
     # On définit vos sujets préférés
-    topics = ["économie", "climat", "politique", "géopolitique"]
+    topics = ["économie", "climat", "politique", "géopolitique", "sport"]
     
     total_new_articles = 0
     for topic in topics:

@@ -89,7 +89,7 @@ class EmailService:
     def send_newsletter(self, recipient_email: str):
         """Récupère les nouveautés et envoie l'email."""
         # On prend les 5 derniers articles ajoutés
-        articles = self.db.query(Article).order_by(Article.created_at.desc()).limit(5).all()
+        articles = self.db.query(Article).order_by(Article.created_at.desc()).limit(15).all()
         
         if not articles:
             print("📭 Pas d'articles à envoyer.")
