@@ -1,0 +1,54 @@
+name: Nexus Daily Run
+
+on:
+  schedule:
+    # Lance le robot tous les jours à 07:00 UTC (08:00 en France)
+    - cron: '0 7 * * *'
+  workflow_dispatch: # Permet le lancement manuel via le bouton
+
+permissions:
+  contents: write
+
+jobs:
+  run-nexus:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 📥 Récupération du code
+      uses: actions/checkout@v3
+
+    - name: 🐍 Installation Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: 📦 Installation des dépendances
+      run: |
+        # On installe les bibliothèques listées dans backend/requirements.txt
+        pip install -r backend/requirements.txt
+        # On installe le dictionnaire français pour l'IA
+        python -m spacy download fr_core_news_md
+
+    - name: 🧠 Restauration de la mémoire
+      continue-on-error: true
+      run: |
+        git config user.name "Nexus Bot"
+        git config user.email "bot@nexus.ai"
+        git pull origin main
+
+    - name: 🤖 Lancement du Robot
+      env:
+        RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        PYTHONPATH: ${{ github.workspace }}/backend
+      run: |
+        # Initialisation de la base de données (au cas où)
+        python backend/init_db.py
+        # Lancement du script principal
+        python main.py
+
+    - name: 💾 Sauvegarde de la mémoire
+      if: success()
+      run: |
+        git add nexis.db
+        git commit -m "🧠 Mise à jour mémoire [skip ci]" || echo "Rien à changer"
+        git push
