@@ -24,10 +24,9 @@ jobs:
 
     - name: 📦 Installation des dépendances
       run: |
-        # On installe les bibliothèques listées dans backend/requirements.txt
         pip install -r backend/requirements.txt
-        # On installe le dictionnaire français pour l'IA
-        python -m spacy download fr_core_news_md
+        # On installe le modèle DIRECTEMENT (plus sûr)
+        pip install https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.7.0/fr_core_news_md-3.7.0-py3-none-any.whl
 
     - name: 🧠 Restauration de la mémoire
       continue-on-error: true
