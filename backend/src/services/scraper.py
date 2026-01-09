@@ -1,5 +1,6 @@
 import sys
 import os
+# On s'assure que Python trouve les modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.dirname(os.path.dirname(current_dir))
 if backend_dir not in sys.path:
@@ -11,12 +12,6 @@ from bs4 import BeautifulSoup
 from typing import List
 from datetime import datetime
 import logging
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-from rich import box
-from rich.align import Align
 from src.services.sentiment_analyzer import SentimentAnalyzer
 from src.services.llm_processor import LLMProcessor
 from src.database import SessionLocal
@@ -43,12 +38,12 @@ class RSSScraper:
             "diploweb": "https://www.diploweb.com/spip.php?page=backend",
         },
         "sport": {
-            "lequipe": "https://www.lequipe.fr/rss/actu_rss.xml"
+            "lequipe": "https://www.lequipe.fr/rss/actu_rss.xml",
+            "rmc_sport": "https://rmcsport.bfmtv.com/rss/fil-info/",
         }
     }
 
     def __init__(self, max_articles_per_topic: int = 10):
-        # On met une limite haute par défaut, c'est la limite PAR SOURCE qui compte maintenant
         self.max_articles_per_topic = max_articles_per_topic
         self.session = requests.Session()
         self.session.headers.update({"User-Agent": "BotActu/1.0"})
@@ -79,31 +74,36 @@ class RSSScraper:
         except:
             self.db.rollback()
 
-    def scrape_topic(self, topic: str) -> List[Article]:
+    # 👇 C'est ICI que la magie du filtre opère (paramètre query)
+    def scrape_topic(self, topic: str, query: str = None) -> List[Article]:
         new_articles_found = []
         feeds = self.RSS_FEEDS.get(topic, {})
-        
-        # ⚡️ CHANGEMENT MAJEUR : On ne remplit pas un quota global.
-        # On va chercher 2 articles MAX par journal pour forcer la diversité.
         MAX_PER_SOURCE = 2 
         
         for feed_name, feed_url in feeds.items():
             feed = feedparser.parse(feed_url)
             if feed.bozo: continue
             
-            source_count = 0 # Compteur pour ce journal spécifique
-
+            source_count = 0 
             for entry in feed.entries:
-                if source_count >= MAX_PER_SOURCE: 
-                    break # On a assez pioché dans ce journal, au suivant !
+                if source_count >= MAX_PER_SOURCE: break
                 
                 link = entry.link
                 if self.article_exists(link): continue
 
                 try:
                     full_text = self.fetch_article_text(link)
-                    txt_analyze = full_text if len(full_text) > 100 else entry.title
                     
+                    # FILTRE DE RECHERCHE
+                    if query:
+                        query_lower = query.lower()
+                        title_lower = entry.title.lower()
+                        text_lower = full_text.lower()
+                        # Si le mot n'est ni dans le titre ni dans le texte, on passe
+                        if query_lower not in title_lower and query_lower not in text_lower:
+                            continue 
+
+                    txt_analyze = full_text if len(full_text) > 100 else entry.title
                     s_score, s_label = self.analyzer.analyze(txt_analyze)
                     
                     ai_sum, rel, srcs = "Non disponible", 50, 0
@@ -115,7 +115,7 @@ class RSSScraper:
                     article_data = {
                         "title": entry.title,
                         "url": link,
-                        "source": feed_name, # On garde la source (ex: lequipe)
+                        "source": feed_name,
                         "topic": topic,
                         "published_date": datetime.now(),
                         "content": full_text[:5000],
@@ -127,7 +127,7 @@ class RSSScraper:
                     }
                     self.save_to_db(article_data)
                     new_articles_found.append(Article(**article_data))
-                    source_count += 1 # On incrémente le compteur de CE journal
+                    source_count += 1
                     
                 except Exception as e:
                     logger.error(f"Erreur: {e}")
