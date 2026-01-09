@@ -67,19 +67,29 @@ def send_email_smart():
     global LAST_SEARCH_RESULTS
     email_service = EmailService()
     
-    # ⚠️ METS TON EMAIL ICI
-    MON_EMAIL = ["juleschopard11@gmail.com"]
+    # ON RÉCUPÈRE L'EMAIL DEPUIS LA CONFIGURATION (plus pro !)
+    user_email = os.getenv("USER_EMAIL")
+    
+    # Sécurité : Si le prof a oublié de mettre son email dans le .env
+    if not user_email:
+        console.print("[red]❌ Erreur : Aucune adresse email trouvée dans le fichier .env[/red]")
+        console.print("[dim]Ajoutez la ligne : USER_EMAIL=votre@email.com dans le fichier .env[/dim]")
+        return
+
+    destinataires = [user_email]
 
     if LAST_SEARCH_RESULTS:
-        console.print(f"[bold blue]📧 Envoi des {len(LAST_SEARCH_RESULTS)} articles de la recherche...[/bold blue]")
-        email_service.send_daily_newsletter(destinataires=MON_EMAIL, specific_articles=LAST_SEARCH_RESULTS)
+        console.print(f"[bold blue]📧 Envoi des {len(LAST_SEARCH_RESULTS)} articles à {user_email}...[/bold blue]")
+        email_service.send_daily_newsletter(destinataires=destinataires, specific_articles=LAST_SEARCH_RESULTS)
         console.print("[green]✅ Mail envoyé ![/green]")
     else:
         console.print("[yellow]Pas de recherche en mémoire.[/yellow]")
         if Prompt.ask("Envoyer tout le stock ?", choices=["y", "n"]) == "y":
-            email_service.send_daily_newsletter(destinataires=MON_EMAIL)
+            email_service.send_daily_newsletter(destinataires=destinataires)
             console.print("[green]✅ Mail global envoyé ![/green]")
 
+
+            
 def run_full_cycle():
     global LAST_SEARCH_RESULTS
     console.print("[bold magenta]🚀 Cycle complet...[/bold magenta]")
