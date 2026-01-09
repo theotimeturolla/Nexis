@@ -13,6 +13,6 @@ Newsletter intelligente avec analyse de sentiment et vérification des sources.
 
 Voir [backend/README.md](backend/README.md) pour les instructions d'installation.
 
-## Licence
-
-MIT
+### 
+pip install -r backend/requirements.txt
+python -m spacy download fr_core_news_md
