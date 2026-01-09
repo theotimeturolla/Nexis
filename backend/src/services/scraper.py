@@ -1,6 +1,5 @@
 import sys
 import os
-# On s'assure que Python trouve les modules
 current_dir = os.path.dirname(os.path.abspath(__file__))
 backend_dir = os.path.dirname(os.path.dirname(current_dir))
 if backend_dir not in sys.path:
@@ -74,7 +73,6 @@ class RSSScraper:
         except:
             self.db.rollback()
 
-    # 👇 C'est ICI que la magie du filtre opère (paramètre query)
     def scrape_topic(self, topic: str, query: str = None) -> List[Article]:
         new_articles_found = []
         feeds = self.RSS_FEEDS.get(topic, {})
@@ -87,21 +85,18 @@ class RSSScraper:
             source_count = 0 
             for entry in feed.entries:
                 if source_count >= MAX_PER_SOURCE: break
-                
                 link = entry.link
                 if self.article_exists(link): continue
 
                 try:
                     full_text = self.fetch_article_text(link)
                     
-                    # FILTRE DE RECHERCHE
+                    # --- FILTRE INTELLIGENT ---
                     if query:
-                        query_lower = query.lower()
-                        title_lower = entry.title.lower()
-                        text_lower = full_text.lower()
-                        # Si le mot n'est ni dans le titre ni dans le texte, on passe
-                        if query_lower not in title_lower and query_lower not in text_lower:
+                        q_low = query.lower()
+                        if q_low not in entry.title.lower() and q_low not in full_text.lower():
                             continue 
+                    # --------------------------
 
                     txt_analyze = full_text if len(full_text) > 100 else entry.title
                     s_score, s_label = self.analyzer.analyze(txt_analyze)
