@@ -71,7 +71,7 @@ def send_newsletter() -> str:
     user_email = os.getenv("USER_EMAIL")
     
     if not user_email:
-        return "❌ Aucun email configuré dans le .env\nAjoutez : USER_EMAIL=votre@email.com"
+        return "❌ Aucun email configuré\n\n💡 Allez dans l'onglet '✉️ S'abonner' pour configurer votre email."
     
     try:
         email_service = EmailService()
@@ -185,6 +185,48 @@ def get_statistics() -> tuple:
     except Exception as e:
         return f"❌ Erreur : {str(e)}", None, None
 
+def subscribe_newsletter(email: str) -> str:
+    """S'abonner à la newsletter en configurant l'email"""
+    if not email or "@" not in email:
+        return "❌ Veuillez entrer une adresse email valide"
+    
+    try:
+        # Lire le fichier .env
+        env_path = 'backend/.env'
+        with open(env_path, 'r') as f:
+            lines = f.readlines()
+        
+        # Mettre à jour ou ajouter USER_EMAIL
+        found = False
+        for i, line in enumerate(lines):
+            if line.startswith('USER_EMAIL='):
+                lines[i] = f'USER_EMAIL={email}\n'
+                found = True
+                break
+        
+        if not found:
+            lines.append(f'\nUSER_EMAIL={email}\n')
+        
+        # Écrire le fichier
+        with open(env_path, 'w') as f:
+            f.writelines(lines)
+        
+        # Recharger les variables d'environnement
+        load_dotenv(env_path)
+        
+        return f"""✅ **Abonnement confirmé !**
+
+📧 Email enregistré : `{email}`
+
+🎉 Vous recevrez maintenant les newsletters Nexus sur cette adresse.
+
+💡 **Prochaines étapes :**
+1. Allez dans l'onglet '🔍 Recherche' pour trouver des articles
+2. Puis dans '📧 Envoyer Email' pour recevoir votre première newsletter !"""
+    
+    except Exception as e:
+        return f"❌ Erreur lors de l'abonnement : {str(e)}"
+
 # ═══════════════════════════════════════════════════════════════
 # INTERFACE GRADIO
 # ═══════════════════════════════════════════════════════════════
@@ -200,7 +242,7 @@ def create_interface():
         # Header
         gr.Markdown("""
         # 🤖 NEXUS - Interface Graphique
-        ### Votre système de veille intelligente avec analyse de sentiment
+        ### Votre système de veille intelligente avec analyse de sentiment et IA
         """)
         
         # Tabs principales
@@ -259,7 +301,35 @@ def create_interface():
                 )
             
             # ═══════════════════════════════════════════════════════════════
-            # TAB 3 : ENVOYER EMAIL
+            # TAB 3 : S'ABONNER (NOUVEAU)
+            # ═══════════════════════════════════════════════════════════════
+            with gr.Tab("✉️ S'abonner"):
+                gr.Markdown("""
+                ### S'abonner à la newsletter Nexus
+                
+                Recevez automatiquement les meilleurs articles sélectionnés par notre IA.
+                
+                **Email actuellement configuré :** `{}`
+                """.format(os.getenv("USER_EMAIL", "Aucun")))
+                
+                with gr.Row():
+                    subscribe_email = gr.Textbox(
+                        label="Votre email",
+                        placeholder="exemple@email.com",
+                        scale=3
+                    )
+                    subscribe_btn = gr.Button("✉️ S'abonner", variant="primary", scale=1)
+                
+                subscribe_output = gr.Markdown()
+                
+                subscribe_btn.click(
+                    fn=subscribe_newsletter,
+                    inputs=subscribe_email,
+                    outputs=subscribe_output
+                )
+            
+            # ═══════════════════════════════════════════════════════════════
+            # TAB 4 : ENVOYER EMAIL
             # ═══════════════════════════════════════════════════════════════
             with gr.Tab("📧 Envoyer Email"):
                 gr.Markdown("""
@@ -281,7 +351,7 @@ def create_interface():
                 )
             
             # ═══════════════════════════════════════════════════════════════
-            # TAB 4 : STATISTIQUES
+            # TAB 5 : STATISTIQUES
             # ═══════════════════════════════════════════════════════════════
             with gr.Tab("📊 Statistiques"):
                 gr.Markdown("### Analyse des données collectées")
@@ -306,11 +376,11 @@ def create_interface():
         gr.Markdown("""
         ---
         💡 **Astuces :**
-        - Faites des recherches spécifiques pour des résultats précis
-        - Les articles sont automatiquement analysés avec BERT (sentiment)
-        - Les emails incluent les résumés IA et les sentiments
+        - Abonnez-vous pour recevoir les newsletters automatiquement
+        - Les articles sont analysés avec BERT (sentiment) et Gemini AI (importance)
+        - Les emails incluent les résumés IA et les sentiments colorés
         
-        🔧 **Configuration :** Modifiez `backend/.env` pour changer l'email
+        🔧 **Powered by** NewsAPI + Gemini AI + BERT + Transformers
         """)
     
     return interface
@@ -324,6 +394,7 @@ if __name__ == "__main__":
     print(f"📧 Email configuré : {os.getenv('USER_EMAIL', 'Non configuré')}")
     print(f"🔑 NewsAPI : {'✅ Configuré' if os.getenv('NEWSAPI_KEY') else '❌ Non configuré'}")
     print(f"📨 Resend : {'✅ Configuré' if os.getenv('RESEND_API_KEY') else '❌ Non configuré'}")
+    print(f"🤖 Gemini : {'✅ Configuré' if os.getenv('GEMINI_API_KEY') else '❌ Non configuré'}")
     print("\n🌐 Ouverture dans votre navigateur...")
     
     interface = create_interface()
