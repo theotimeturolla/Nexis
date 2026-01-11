@@ -2,9 +2,12 @@ import asyncio
 import sys
 import os
 from typing import List
+from dotenv import load_dotenv
 
 # Ajout du chemin backend
 sys.path.append(os.path.join(os.path.dirname(__file__), 'backend'))
+
+load_dotenv('backend/.env')
 
 from src.services.scraper import RSSScraper
 from src.services.email_service import EmailService
@@ -44,16 +47,16 @@ def run_search(query: str):
     console.print(f"[bold yellow]🕵️‍♂️ Recherche : '{query.upper()}'...[/bold yellow]")
     
     scraper = RSSScraper(max_articles_per_topic=5)
-    topics = ["économie", "climat", "politique", "géopolitique", "sport"]
     found_articles = []
     
-    for topic in topics:
-        articles = scraper.scrape_topic(topic, query=query)
-        if articles:
-            console.print(f"   [cyan]{topic.capitalize()}[/cyan] : {len(articles)} trouvé(s)")
-            for art in articles:
-                console.print(f"   - {art.title}")
-            found_articles.extend(articles)
+    # ⚡ OPTIMISATION : On cherche seulement dans "sport" avec NewsAPI
+    # (évite de faire 5 requêtes pour chaque topic)
+    articles = scraper.scrape_topic("sport", query=query)
+    if articles:
+        console.print(f"   [cyan]Sport[/cyan] : {len(articles)} trouvé(s)")
+        for art in articles:
+            console.print(f"   - {art.title}")
+        found_articles.extend(articles)
             
     if not found_articles:
         console.print(f"[red]Rien trouvé pour '{query}'.[/red]")

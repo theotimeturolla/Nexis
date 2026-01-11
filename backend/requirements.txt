@@ -45,3 +45,8 @@ httpx==0.25.2
 black==23.12.0
 flake8==6.1.0
 mypy==1.7.1
+
+# Interface graphique
+gradio
+plotly
+pandas
