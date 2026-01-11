@@ -50,3 +50,6 @@ mypy==1.7.1
 gradio
 plotly
 pandas
+
+newsapi-python
+
