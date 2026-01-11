@@ -1,53 +1,50 @@
-name: Nexus Daily Run
+name: Nexus Daily Newsletter
 
 on:
   schedule:
-    # Lance le robot tous les jours à 07:00 UTC (08:00 en France)
     - cron: '0 7 * * *'
-  workflow_dispatch: # Permet le lancement manuel via le bouton
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  run-nexus:
+  send-newsletter:
     runs-on: ubuntu-latest
 
     steps:
-    - name: 📥 Récupération du code
+    - name: Recuperation du code
       uses: actions/checkout@v3
 
-    - name: 🐍 Installation Python
+    - name: Installation Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
 
-    - name: 📦 Installation des dépendances
+    - name: Installation des dependances
       run: |
         pip install -r backend/requirements.txt
-        # On installe le modèle DIRECTEMENT (plus sûr)
-        pip install https://github.com/explosion/spacy-models/releases/download/fr_core_news_md-3.7.0/fr_core_news_md-3.7.0-py3-none-any.whl
+        pip install google-generativeai
 
-    - name: 🧠 Restauration de la mémoire
+    - name: Restauration de la memoire
       continue-on-error: true
       run: |
         git config user.name "Nexus Bot"
         git config user.email "bot@nexus.ai"
         git pull origin main
 
-    - name: 🤖 Lancement du Robot
+    - name: Envoi de la newsletter quotidienne
       env:
         RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+        NEWSAPI_KEY: ${{ secrets.NEWSAPI_KEY }}
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         PYTHONPATH: ${{ github.workspace }}/backend
       run: |
-        # Initialisation de la base de données (au cas où)
-        python backend/init_db.py
-        # Lancement du script principal
-        python main.py
+        python send_daily_newsletter.py
 
-    - name: 💾 Sauvegarde de la mémoire
+    - name: Sauvegarde de la memoire
       if: success()
       run: |
         git add nexis.db
-        git commit -m "🧠 Mise à jour mémoire [skip ci]" || echo "Rien à changer"
+        git commit -m "Mise a jour memoire [skip ci]" || echo "Rien a changer"
         git push
