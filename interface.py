@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 
 from src.services.scraper import RSSScraper
 from src.services.email_service import EmailService
+from src.services.subscription_service import SubscriptionService
 from src.database import SessionLocal, init_db
 from src.models import Article
 
@@ -37,7 +38,7 @@ def search_articles(query: str) -> str:
         return "⚠️ Veuillez entrer un mot-clé (minimum 2 caractères)"
     
     try:
-        scraper = RSSScraper(max_articles_per_topic=5)
+        scraper = RSSScraper(max_articles_per_topic=10)
         articles = scraper.scrape_topic("sport", query=query.strip())
         
         LAST_SEARCH_RESULTS = articles
@@ -57,7 +58,7 @@ def search_articles(query: str) -> str:
             result += f"   📰 Source: {art.source}\n"
             result += f"   🔗 [Lire l'article]({art.url})\n\n"
         
-        result += f"💡 *Tapez sur 'Envoyer par Email' pour recevoir ces articles*"
+        result += f"💡 *Tapez sur 'Envoyer Email' pour envoyer ces articles à tous les abonnés*"
         
         return result
         
@@ -65,38 +66,45 @@ def search_articles(query: str) -> str:
         return f"❌ Erreur lors de la recherche : {str(e)}"
 
 def send_newsletter() -> str:
-    """Envoie la newsletter avec les derniers articles"""
+    """Envoie la newsletter à TOUS les abonnés actifs"""
     global LAST_SEARCH_RESULTS
     
-    user_email = os.getenv("USER_EMAIL")
-    
-    if not user_email:
-        return "❌ Aucun email configuré\n\n💡 Allez dans l'onglet '✉️ S'abonner' pour configurer votre email."
-    
     try:
-        email_service = EmailService()
+        # Récupérer tous les abonnés actifs
+        sub_service = SubscriptionService()
+        subscribers = sub_service.get_active_subscribers()
         
+        if not subscribers:
+            return "❌ Aucun abonné dans la base de données\n\n💡 Allez dans l'onglet '✉️ S'abonner' pour ajouter des abonnés."
+        
+        # Préparer les articles
         if LAST_SEARCH_RESULTS:
-            email_service.send_daily_newsletter(
-                destinataires=[user_email],
-                specific_articles=LAST_SEARCH_RESULTS
-            )
-            return f"✅ Email envoyé avec succès à {user_email} !\n📧 {len(LAST_SEARCH_RESULTS)} articles inclus"
+            articles = LAST_SEARCH_RESULTS
         else:
-            # Envoyer les derniers articles de la base
             db = SessionLocal()
             articles = db.query(Article).order_by(Article.created_at.desc()).limit(10).all()
             db.close()
-            
-            if not articles:
-                return "❌ Aucun article disponible à envoyer"
-            
-            email_service.send_daily_newsletter(
-                destinataires=[user_email],
-                specific_articles=articles
-            )
-            return f"✅ Email envoyé avec succès à {user_email} !\n📧 {len(articles)} derniers articles inclus"
-            
+        
+        if not articles:
+            return "❌ Aucun article disponible à envoyer"
+        
+        # Envoyer à tous les abonnés
+        email_service = EmailService()
+        destinataires = [sub.email for sub in subscribers]
+        
+        email_service.send_daily_newsletter(
+            destinataires=destinataires,
+            specific_articles=articles
+        )
+        
+        return f"""✅ **Newsletter envoyée avec succès !**
+
+📧 **{len(destinataires)} abonné(s)** ont reçu l'email
+📰 **{len(articles)} articles** inclus
+
+**Abonnés qui ont reçu la newsletter :**
+""" + "\n".join([f"   ✉️ {sub.email}" for sub in subscribers])
+        
     except Exception as e:
         return f"❌ Erreur lors de l'envoi : {str(e)}"
 
@@ -186,46 +194,55 @@ def get_statistics() -> tuple:
         return f"❌ Erreur : {str(e)}", None, None
 
 def subscribe_newsletter(email: str) -> str:
-    """S'abonner à la newsletter en configurant l'email"""
+    """S'abonner à la newsletter avec email de confirmation"""
     if not email or "@" not in email:
         return "❌ Veuillez entrer une adresse email valide"
     
     try:
-        # Lire le fichier .env
-        env_path = 'backend/.env'
-        with open(env_path, 'r') as f:
-            lines = f.readlines()
+        sub_service = SubscriptionService()
+        result = sub_service.subscribe(email)
         
-        # Mettre à jour ou ajouter USER_EMAIL
-        found = False
-        for i, line in enumerate(lines):
-            if line.startswith('USER_EMAIL='):
-                lines[i] = f'USER_EMAIL={email}\n'
-                found = True
-                break
-        
-        if not found:
-            lines.append(f'\nUSER_EMAIL={email}\n')
-        
-        # Écrire le fichier
-        with open(env_path, 'w') as f:
-            f.writelines(lines)
-        
-        # Recharger les variables d'environnement
-        load_dotenv(env_path)
-        
-        return f"""✅ **Abonnement confirmé !**
+        if result["success"]:
+            return f"""✅ **Abonnement confirmé !**
 
 📧 Email enregistré : `{email}`
 
-🎉 Vous recevrez maintenant les newsletters Nexus sur cette adresse.
+🎉 Un **email de bienvenue** a été envoyé à cette adresse.
 
-💡 **Prochaines étapes :**
-1. Allez dans l'onglet '🔍 Recherche' pour trouver des articles
-2. Puis dans '📧 Envoyer Email' pour recevoir votre première newsletter !"""
+💡 **Ce qui va se passer :**
+- Email de confirmation envoyé immédiatement
+- Newsletters envoyées automatiquement tous les matins à 7h
+- Sélection des meilleurs articles par Gemini AI
+
+🔧 **Pour tester maintenant :**
+1. Allez dans l'onglet '🔍 Recherche'
+2. Cherchez des articles
+3. Puis '📧 Envoyer Email' pour envoyer à tous les abonnés"""
+        else:
+            return result["message"]
     
     except Exception as e:
         return f"❌ Erreur lors de l'abonnement : {str(e)}"
+
+def get_subscribers_list() -> str:
+    """Afficher la liste des abonnés"""
+    try:
+        sub_service = SubscriptionService()
+        subscribers = sub_service.get_active_subscribers()
+        
+        if not subscribers:
+            return "📭 Aucun abonné pour le moment"
+        
+        result = f"👥 **{len(subscribers)} abonné(s) actif(s)**\n\n"
+        
+        for i, sub in enumerate(subscribers, 1):
+            result += f"{i}. 📧 {sub.email}\n"
+            result += f"   📅 Abonné depuis : {sub.subscribed_at.strftime('%d/%m/%Y %H:%M')}\n\n"
+        
+        return result
+        
+    except Exception as e:
+        return f"❌ Erreur : {str(e)}"
 
 # ═══════════════════════════════════════════════════════════════
 # INTERFACE GRADIO
@@ -242,7 +259,7 @@ def create_interface():
         # Header
         gr.Markdown("""
         # 🤖 NEXUS - Interface Graphique
-        ### Votre système de veille intelligente avec analyse de sentiment et IA
+        ### Votre système de veille intelligente avec IA et abonnements
         """)
         
         # Tabs principales
@@ -301,20 +318,24 @@ def create_interface():
                 )
             
             # ═══════════════════════════════════════════════════════════════
-            # TAB 3 : S'ABONNER (NOUVEAU)
+            # TAB 3 : S'ABONNER
             # ═══════════════════════════════════════════════════════════════
             with gr.Tab("✉️ S'abonner"):
                 gr.Markdown("""
                 ### S'abonner à la newsletter Nexus
                 
-                Recevez automatiquement les meilleurs articles sélectionnés par notre IA.
+                Recevez automatiquement les meilleurs articles sélectionnés par Gemini AI.
                 
-                **Email actuellement configuré :** `{}`
-                """.format(os.getenv("USER_EMAIL", "Aucun")))
+                🎯 **Fonctionnalités :**
+                - Email de confirmation immédiat
+                - Newsletter quotidienne à 7h du matin
+                - Articles analysés par IA (sentiment + résumé)
+                - Sélection intelligente des actualités importantes
+                """)
                 
                 with gr.Row():
                     subscribe_email = gr.Textbox(
-                        label="Votre email",
+                        label="Adresse email",
                         placeholder="exemple@email.com",
                         scale=3
                     )
@@ -327,22 +348,34 @@ def create_interface():
                     inputs=subscribe_email,
                     outputs=subscribe_output
                 )
+                
+                gr.Markdown("---")
+                
+                gr.Markdown("### 👥 Liste des abonnés")
+                
+                list_btn = gr.Button("📋 Afficher les abonnés", variant="secondary")
+                list_output = gr.Markdown()
+                
+                list_btn.click(
+                    fn=get_subscribers_list,
+                    outputs=list_output
+                )
             
             # ═══════════════════════════════════════════════════════════════
             # TAB 4 : ENVOYER EMAIL
             # ═══════════════════════════════════════════════════════════════
             with gr.Tab("📧 Envoyer Email"):
                 gr.Markdown("""
-                ### Envoyer la newsletter par email
+                ### Envoyer la newsletter à tous les abonnés
                 
-                **Email configuré :** `{}`
+                Cette fonction envoie la newsletter à **TOUS** les abonnés actifs.
                 
-                Deux options :
-                - Si vous venez de faire une recherche, les articles trouvés seront envoyés
-                - Sinon, les 10 derniers articles de la base seront envoyés
-                """.format(os.getenv("USER_EMAIL", "Non configuré")))
+                📋 **Contenu envoyé :**
+                - Si vous venez de faire une recherche : les articles trouvés
+                - Sinon : les 10 derniers articles de la base de données
+                """)
                 
-                send_btn = gr.Button("📧 Envoyer la Newsletter", variant="primary", size="lg")
+                send_btn = gr.Button("📧 Envoyer la Newsletter à tous les abonnés", variant="primary", size="lg")
                 send_output = gr.Markdown()
                 
                 send_btn.click(
@@ -376,11 +409,11 @@ def create_interface():
         gr.Markdown("""
         ---
         💡 **Astuces :**
-        - Abonnez-vous pour recevoir les newsletters automatiquement
+        - Abonnez-vous (et vos amis) pour recevoir les newsletters automatiquement
         - Les articles sont analysés avec BERT (sentiment) et Gemini AI (importance)
-        - Les emails incluent les résumés IA et les sentiments colorés
+        - Les newsletters sont envoyées tous les matins à 7h via GitHub Actions
         
-        🔧 **Powered by** NewsAPI + Gemini AI + BERT + Transformers
+        🔧 **Powered by** NewsAPI + Gemini AI + BERT + Transformers + Resend
         """)
     
     return interface
@@ -391,7 +424,6 @@ def create_interface():
 
 if __name__ == "__main__":
     print("🚀 Lancement de l'interface Nexus...")
-    print(f"📧 Email configuré : {os.getenv('USER_EMAIL', 'Non configuré')}")
     print(f"🔑 NewsAPI : {'✅ Configuré' if os.getenv('NEWSAPI_KEY') else '❌ Non configuré'}")
     print(f"📨 Resend : {'✅ Configuré' if os.getenv('RESEND_API_KEY') else '❌ Non configuré'}")
     print(f"🤖 Gemini : {'✅ Configuré' if os.getenv('GEMINI_API_KEY') else '❌ Non configuré'}")
@@ -399,8 +431,8 @@ if __name__ == "__main__":
     
     interface = create_interface()
     interface.launch(
-        server_name="0.0.0.0",  # Accessible depuis le réseau local
+        server_name="0.0.0.0",
         server_port=7860,
-        share=False,  # Mettez True pour un lien public temporaire
-        inbrowser=True  # Ouvre automatiquement le navigateur
+        share=False,
+        inbrowser=True
     )

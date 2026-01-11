@@ -23,3 +23,12 @@ class Article(Base):
     source_count = Column(Integer, default=0)
     
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Subscriber(Base):
+    """Table des abonnés à la newsletter"""
+    __tablename__ = "subscribers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String, unique=True, index=True, nullable=False)
+    subscribed_at = Column(DateTime(timezone=True), server_default=func.now())
+    is_active = Column(Integer, default=1)  # 1 = actif, 0 = désabonné
