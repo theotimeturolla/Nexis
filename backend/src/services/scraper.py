@@ -11,7 +11,7 @@ from datetime import datetime
 from src.services.sentiment_analyzer import SentimentAnalyzer
 from src.services.llm_processor import LLMProcessor
 from src.services.news_api_service import NewsAPIService
-from src.services.importance_ranker import ImportanceRanker  # ← NOUVEAU
+from src.services.importance_ranker import ImportanceRanker  
 from src.database import SessionLocal
 from src.models import Article
 
@@ -26,7 +26,7 @@ class RSSScraper:
         self.llm_processor = LLMProcessor()
         self.db = SessionLocal()
         self.news_api = NewsAPIService()
-        self.ranker = ImportanceRanker()  # ← NOUVEAU : Gemini ranker
+        self.ranker = ImportanceRanker()  
 
     def article_exists(self, url: str) -> bool:
         """Vérifie si un article existe déjà en base de données"""
@@ -48,7 +48,7 @@ class RSSScraper:
         """
         new_articles_found = []
         
-        # 🎯 Stratégie : Si pas de mot-clé précis, on cherche le sujet global
+        # Stratégie : Si pas de mot-clé précis, on cherche le sujet global
         search_term = query if query else topic
         
         if not self.news_api.client:
@@ -61,35 +61,43 @@ class RSSScraper:
         max_fetch = max(20, self.max_articles_per_topic * 2)
         api_articles = self.news_api.search_articles(search_term, max_results=max_fetch)
         
-        for art_data in api_articles:
+        print(f"📰 NewsAPI a retourné {len(api_articles)} articles")  # DEBUG
+        
+        for i, art_data in enumerate(api_articles, 1):
+            print(f"\n   [{i}/{len(api_articles)}] Traitement: {art_data['title'][:50]}...")  # DEBUG
+            
             # Vérifier si l'article existe déjà
             if self.article_exists(art_data['url']):
+                print(f"      ⏭️ Déjà en base, skip")  # DEBUG
                 continue
             
             try:
                 # 1. Analyse du sentiment (sur description ou titre)
                 text_to_analyze = art_data.get('description', '') or art_data['title']
+                print(f"      🔄 Analyse sentiment...")  # DEBUG
                 s_score, s_label = self.analyzer.analyze(text_to_analyze)
+                print(f"      ✅ Sentiment: {s_label} ({s_score:.2f})")  # DEBUG
                 
                 # 2. Analyse LLM (résumé + sources)
-                # NewsAPI donne souvent un contenu tronqué dans 'content', on fait avec ce qu'on a
                 content = art_data.get('content', '') or art_data.get('description', '') or ""
                 ai_sum, rel, srcs = "Non disponible", 50, 0
                 
                 if len(content) > 200:
+                    print(f"      🔄 Analyse LLM...")  # DEBUG
                     analysis = self.llm_processor.analyze_content(content)
                     if analysis:
                         ai_sum = analysis.summary
                         rel = analysis.reliability_score
                         srcs = len(analysis.sources)
+                        print(f"      ✅ Résumé généré")  # DEBUG
                 
                 # 3. Création de l'objet article
                 article_data = {
                     "title": art_data['title'],
                     "url": art_data['url'],
-                    "source": art_data['source'], # NewsAPI donne déjà le nom du journal
+                    "source": art_data['source'],
                     "topic": topic,
-                    "published_date": datetime.now(), # On pourrait parser art_data['published_at']
+                    "published_date": datetime.now(),
                     "content": content[:5000],
                     "sentiment_score": s_score,
                     "sentiment_label": s_label,
@@ -99,22 +107,32 @@ class RSSScraper:
                 }
                 
                 # 4. Sauvegarde
+                print(f"      💾 Sauvegarde en DB...")  # DEBUG
                 self.save_to_db(article_data)
+                print(f"      ✅ Sauvegardé en DB")  # DEBUG
+                
                 new_articles_found.append(Article(**article_data))
-                print(f"      ✅ NewsAPI: {art_data['title'][:60]}...")
+                print(f"      ➕ Ajouté à la liste (total: {len(new_articles_found)})")  # DEBUG
                 
             except Exception as e:
-                logger.error(f"Erreur traitement article NewsAPI: {e}")
+                print(f"      ❌ ERREUR: {e}")  # DEBUG
+                import traceback
+                traceback.print_exc()  # DEBUG
                 continue
         
-        # ═══════════════════════════════════════════════════════════════
-        # 🤖 SÉLECTION INTELLIGENTE avec Gemini
-        # ═══════════════════════════════════════════════════════════════
+        print(f"\n📊 Total articles collectés: {len(new_articles_found)}")  # DEBUG
+        
+        # SÉLECTION INTELLIGENTE avec Gemini
         if len(new_articles_found) > self.max_articles_per_topic:
             print(f"🤖 Gemini sélectionne les {self.max_articles_per_topic} meilleurs articles...")
+            print(f"   📥 Envoi de {len(new_articles_found)} articles à Gemini")  # DEBUG
+            
             new_articles_found = self.ranker.rank_articles(
                 new_articles_found, 
                 top_n=self.max_articles_per_topic
             )
+            
+            print(f"   📤 Gemini a retourné {len(new_articles_found)} articles")  # DEBUG
         
+        print(f"\n✅ Retour final: {len(new_articles_found)} articles")  # DEBUG
         return new_articles_found

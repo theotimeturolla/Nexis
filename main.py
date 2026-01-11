@@ -41,30 +41,67 @@ def show_help():
     """
     console.print(Markdown(md))
 
+def display_articles(articles):
+    """Affiche une liste d'articles formatée"""
+    if not articles:
+        print("Aucun article à afficher")
+        return
+    
+    for i, art in enumerate(articles, 1):
+        # Emoji selon sentiment
+        emoji = {"positif": "😊", "négatif": "😞", "neutre": "😐"}.get(
+            art.sentiment_label.lower() if art.sentiment_label else "neutre", 
+            "📰"
+        )
+        
+        # Affichage
+        print(f"{i}. {emoji} {art.title}")
+        print(f"   📰 {art.source} | 🎭 {art.sentiment_label or 'N/A'}")
+        print(f"   🔗 {art.url}")
+        if art.summary and art.summary != "Non disponible":
+            print(f"   📝 {art.summary[:150]}...")
+        print()
+        
 def run_search(query: str):
-    global LAST_SEARCH_RESULTS
+    """Recherche des articles par mot-clé"""
+    global LAST_SEARCH_RESULTS  # ← DÉPLACER ICI EN PREMIER
     
-    console.print(f"[bold yellow]🕵️‍♂️ Recherche : '{query.upper()}'...[/bold yellow]")
+    if not query:
+        print("Veuillez indiquer un mot-clé")
+        return
     
-    scraper = RSSScraper(max_articles_per_topic=5)
-    found_articles = []
+    print(f"🕵️‍♂️ Recherche : '{query.upper()}'...")
     
-    # ⚡ OPTIMISATION : On cherche seulement dans "sport" avec NewsAPI
-    # (évite de faire 5 requêtes pour chaque topic)
-    articles = scraper.scrape_topic("sport", query=query)
-    if articles:
-        console.print(f"   [cyan]Sport[/cyan] : {len(articles)} trouvé(s)")
-        for art in articles:
-            console.print(f"   - {art.title}")
-        found_articles.extend(articles)
-            
-    if not found_articles:
-        console.print(f"[red]Rien trouvé pour '{query}'.[/red]")
-        LAST_SEARCH_RESULTS = []
-    else:
-        console.print(f"[green]✅ {len(found_articles)} articles en mémoire ![/green]")
-        console.print("[dim]Tapez 'envoie mail' pour les recevoir.[/dim]")
-        LAST_SEARCH_RESULTS = found_articles
+    # 1. Scraper de nouveaux articles
+    scraper = RSSScraper(max_articles_per_topic=10)
+    new_articles = scraper.scrape_topic("sport", query=query)
+    
+    # 2. Si aucun nouveau, chercher dans la base
+    if not new_articles:
+        print("📭 Aucun nouvel article, recherche dans la base...")
+        db = SessionLocal()
+        
+        # Recherche en base avec le mot-clé
+        existing_articles = db.query(Article).filter(
+            Article.title.contains(query) | Article.content.contains(query)
+        ).order_by(Article.created_at.desc()).limit(10).all()
+        
+        db.close()
+        
+        if existing_articles:
+            print(f"📚 {len(existing_articles)} article(s) trouvé(s) en base\n")
+            display_articles(existing_articles)
+            LAST_SEARCH_RESULTS = existing_articles  # ← Plus de global ici
+            return
+        else:
+            print(f"Rien trouvé pour '{query}'.")
+            return
+    
+    # 3. Afficher les nouveaux articles
+    print(f"\n🆕 {len(new_articles)} nouvel(aux) article(s)\n")
+    display_articles(new_articles)
+    
+    LAST_SEARCH_RESULTS = new_articles  # ← Plus de global ici
 
 def send_email_smart():
     global LAST_SEARCH_RESULTS

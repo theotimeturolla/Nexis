@@ -35,7 +35,7 @@ def search_articles(query: str) -> str:
     global LAST_SEARCH_RESULTS
     
     if not query or len(query.strip()) < 2:
-        return "⚠️ Veuillez entrer un mot-clé (minimum 2 caractères)"
+        return "Veuillez entrer un mot-clé (minimum 2 caractères)"
     
     try:
         scraper = RSSScraper(max_articles_per_topic=10)
@@ -44,26 +44,52 @@ def search_articles(query: str) -> str:
         LAST_SEARCH_RESULTS = articles
         
         if not articles:
-            return f"❌ Aucun article trouvé pour '{query}'"
+            return f"Aucun article trouvé pour '{query}'"
         
         # Formatage des résultats
-        result = f"✅ **{len(articles)} articles trouvés pour '{query}'**\n\n"
+        result = f"**{len(articles)} articles trouvés pour '{query}'**\n\n"
         
         for i, art in enumerate(articles, 1):
             emoji = {"positif": "😊", "négatif": "😞", "neutre": "😐"}.get(art.sentiment_label.lower(), "📰")
-            color = {"positif": "🟢", "négatif": "🔴", "neutre": "🟡"}.get(art.sentiment_label.lower(), "⚪")
             
             result += f"**{i}. {emoji} {art.title}**\n"
-            result += f"   {color} Sentiment: **{art.sentiment_label.upper()}**\n"
-            result += f"   📰 Source: {art.source}\n"
-            result += f"   🔗 [Lire l'article]({art.url})\n\n"
-        
-        result += f"💡 *Tapez sur 'Envoyer Email' pour envoyer ces articles à tous les abonnés*"
+            result += f"   Sentiment: **{art.sentiment_label.upper()}**\n"
+            result += f"   Source: {art.source}\n"
+            result += f"   [Lire l'article]({art.url})\n\n"
         
         return result
         
     except Exception as e:
-        return f"❌ Erreur lors de la recherche : {str(e)}"
+        return f"Erreur lors de la recherche : {str(e)}"
+
+def send_to_me() -> str:
+    """Envoie les résultats de recherche uniquement à l'utilisateur"""
+    global LAST_SEARCH_RESULTS
+    
+    user_email = os.getenv("USER_EMAIL")
+    
+    if not user_email:
+        return "Aucun email configuré\n\nAllez dans Settings et configurez USER_EMAIL dans le fichier .env"
+    
+    if not LAST_SEARCH_RESULTS:
+        return "Aucun résultat de recherche\n\nFaites d'abord une recherche dans l'onglet Recherche"
+    
+    try:
+        email_service = EmailService()
+        email_service.send_daily_newsletter(
+            destinataires=[user_email],
+            specific_articles=LAST_SEARCH_RESULTS
+        )
+        
+        return f"""Email envoyé avec succès
+
+Destinataire: {user_email}
+Articles inclus: {len(LAST_SEARCH_RESULTS)}
+
+Vérifiez votre boîte mail"""
+        
+    except Exception as e:
+        return f"Erreur lors de l'envoi : {str(e)}"
 
 def send_newsletter() -> str:
     """Envoie la newsletter à TOUS les abonnés actifs"""
@@ -75,7 +101,7 @@ def send_newsletter() -> str:
         subscribers = sub_service.get_active_subscribers()
         
         if not subscribers:
-            return "❌ Aucun abonné dans la base de données\n\n💡 Allez dans l'onglet '✉️ S'abonner' pour ajouter des abonnés."
+            return "Aucun abonné dans la base de données\n\nAllez dans l'onglet S'abonner pour ajouter des abonnés"
         
         # Préparer les articles
         if LAST_SEARCH_RESULTS:
@@ -86,7 +112,7 @@ def send_newsletter() -> str:
             db.close()
         
         if not articles:
-            return "❌ Aucun article disponible à envoyer"
+            return "Aucun article disponible à envoyer"
         
         # Envoyer à tous les abonnés
         email_service = EmailService()
@@ -97,16 +123,16 @@ def send_newsletter() -> str:
             specific_articles=articles
         )
         
-        return f"""✅ **Newsletter envoyée avec succès !**
+        return f"""Newsletter envoyée avec succès
 
-📧 **{len(destinataires)} abonné(s)** ont reçu l'email
-📰 **{len(articles)} articles** inclus
+{len(destinataires)} abonné(s) ont reçu l'email
+{len(articles)} articles inclus
 
-**Abonnés qui ont reçu la newsletter :**
-""" + "\n".join([f"   ✉️ {sub.email}" for sub in subscribers])
+Abonnés qui ont reçu la newsletter:
+""" + "\n".join([f"  - {sub.email}" for sub in subscribers])
         
     except Exception as e:
-        return f"❌ Erreur lors de l'envoi : {str(e)}"
+        return f"Erreur lors de l'envoi : {str(e)}"
 
 def get_latest_articles(limit: int = 10) -> str:
     """Récupère les derniers articles stockés"""
@@ -116,21 +142,20 @@ def get_latest_articles(limit: int = 10) -> str:
         db.close()
         
         if not articles:
-            return "📭 Aucun article en base de données\nFaites une recherche pour commencer !"
+            return "Aucun article en base de données\nFaites une recherche pour commencer"
         
-        result = f"📰 **{len(articles)} derniers articles**\n\n"
+        result = f"**{len(articles)} derniers articles**\n\n"
         
         for i, art in enumerate(articles, 1):
             emoji = {"positif": "😊", "négatif": "😞", "neutre": "😐"}.get(art.sentiment_label.lower(), "📰")
-            color = {"positif": "🟢", "négatif": "🔴", "neutre": "🟡"}.get(art.sentiment_label.lower(), "⚪")
             
             result += f"**{i}. {emoji} {art.title[:80]}...**\n"
-            result += f"   {color} {art.sentiment_label.upper()} | 📰 {art.source} | 📅 {art.created_at.strftime('%d/%m %H:%M')}\n\n"
+            result += f"   {art.sentiment_label.upper()} | {art.source} | {art.created_at.strftime('%d/%m %H:%M')}\n\n"
         
         return result
         
     except Exception as e:
-        return f"❌ Erreur : {str(e)}"
+        return f"Erreur : {str(e)}"
 
 def get_statistics() -> tuple:
     """Génère les statistiques et graphiques"""
@@ -140,7 +165,7 @@ def get_statistics() -> tuple:
         db.close()
         
         if not articles:
-            return "📊 Aucune donnée disponible", None, None
+            return "Aucune donnée disponible", None, None
         
         # Stats textuelles
         total = len(articles)
@@ -152,19 +177,19 @@ def get_statistics() -> tuple:
             sentiments[sent] = sentiments.get(sent, 0) + 1
             sources[art.source] = sources.get(art.source, 0) + 1
         
-        stats_text = f"📊 **STATISTIQUES NEXUS**\n\n"
-        stats_text += f"📰 Total articles : **{total}**\n\n"
-        stats_text += f"**Répartition des sentiments :**\n"
-        stats_text += f"😊 Positif : {sentiments.get('positif', 0)} ({sentiments.get('positif', 0)/total*100:.1f}%)\n"
-        stats_text += f"😐 Neutre : {sentiments.get('neutre', 0)} ({sentiments.get('neutre', 0)/total*100:.1f}%)\n"
-        stats_text += f"😞 Négatif : {sentiments.get('négatif', 0)} ({sentiments.get('négatif', 0)/total*100:.1f}%)\n\n"
-        stats_text += f"**Top 5 sources :**\n"
+        stats_text = f"**STATISTIQUES NEXUS**\n\n"
+        stats_text += f"Total articles: **{total}**\n\n"
+        stats_text += f"**Répartition des sentiments:**\n"
+        stats_text += f"Positif: {sentiments.get('positif', 0)} ({sentiments.get('positif', 0)/total*100:.1f}%)\n"
+        stats_text += f"Neutre: {sentiments.get('neutre', 0)} ({sentiments.get('neutre', 0)/total*100:.1f}%)\n"
+        stats_text += f"Négatif: {sentiments.get('négatif', 0)} ({sentiments.get('négatif', 0)/total*100:.1f}%)\n\n"
+        stats_text += f"**Top 5 sources:**\n"
         for source, count in sorted(sources.items(), key=lambda x: x[1], reverse=True)[:5]:
-            stats_text += f"📰 {source} : {count} articles\n"
+            stats_text += f"{source}: {count} articles\n"
         
-        # Graphique sentiments (Pie chart)
+        # Graphique sentiments
         fig_sentiment = go.Figure(data=[go.Pie(
-            labels=['😊 Positif', '😐 Neutre', '😞 Négatif'],
+            labels=['Positif', 'Neutre', 'Négatif'],
             values=[sentiments.get('positif', 0), sentiments.get('neutre', 0), sentiments.get('négatif', 0)],
             marker=dict(colors=['#10b981', '#f59e0b', '#ef4444']),
             hole=0.4
@@ -174,7 +199,7 @@ def get_statistics() -> tuple:
             height=400
         )
         
-        # Graphique sources (Bar chart)
+        # Graphique sources
         top_sources = sorted(sources.items(), key=lambda x: x[1], reverse=True)[:10]
         fig_sources = go.Figure(data=[go.Bar(
             x=[s[0] for s in top_sources],
@@ -191,38 +216,33 @@ def get_statistics() -> tuple:
         return stats_text, fig_sentiment, fig_sources
         
     except Exception as e:
-        return f"❌ Erreur : {str(e)}", None, None
+        return f"Erreur : {str(e)}", None, None
 
 def subscribe_newsletter(email: str) -> str:
     """S'abonner à la newsletter avec email de confirmation"""
     if not email or "@" not in email:
-        return "❌ Veuillez entrer une adresse email valide"
+        return "Veuillez entrer une adresse email valide"
     
     try:
         sub_service = SubscriptionService()
         result = sub_service.subscribe(email)
         
         if result["success"]:
-            return f"""✅ **Abonnement confirmé !**
+            return f"""Abonnement confirmé
 
-📧 Email enregistré : `{email}`
+Email enregistré: {email}
 
-🎉 Un **email de bienvenue** a été envoyé à cette adresse.
+Un email de bienvenue a été envoyé à cette adresse
 
-💡 **Ce qui va se passer :**
+Ce qui va se passer:
 - Email de confirmation envoyé immédiatement
 - Newsletters envoyées automatiquement tous les matins à 7h
-- Sélection des meilleurs articles par Gemini AI
-
-🔧 **Pour tester maintenant :**
-1. Allez dans l'onglet '🔍 Recherche'
-2. Cherchez des articles
-3. Puis '📧 Envoyer Email' pour envoyer à tous les abonnés"""
+- Sélection des meilleurs articles par Gemini AI"""
         else:
             return result["message"]
     
     except Exception as e:
-        return f"❌ Erreur lors de l'abonnement : {str(e)}"
+        return f"Erreur lors de l'abonnement : {str(e)}"
 
 def get_subscribers_list() -> str:
     """Afficher la liste des abonnés"""
@@ -231,18 +251,18 @@ def get_subscribers_list() -> str:
         subscribers = sub_service.get_active_subscribers()
         
         if not subscribers:
-            return "📭 Aucun abonné pour le moment"
+            return "Aucun abonné pour le moment"
         
-        result = f"👥 **{len(subscribers)} abonné(s) actif(s)**\n\n"
+        result = f"**{len(subscribers)} abonné(s) actif(s)**\n\n"
         
         for i, sub in enumerate(subscribers, 1):
-            result += f"{i}. 📧 {sub.email}\n"
-            result += f"   📅 Abonné depuis : {sub.subscribed_at.strftime('%d/%m/%Y %H:%M')}\n\n"
+            result += f"{i}. {sub.email}\n"
+            result += f"   Abonné depuis: {sub.subscribed_at.strftime('%d/%m/%Y %H:%M')}\n\n"
         
         return result
         
     except Exception as e:
-        return f"❌ Erreur : {str(e)}"
+        return f"Erreur : {str(e)}"
 
 # ═══════════════════════════════════════════════════════════════
 # INTERFACE GRADIO
@@ -258,17 +278,15 @@ def create_interface():
         
         # Header
         gr.Markdown("""
-        # 🤖 NEXUS - Interface Graphique
+        # NEXUS - Interface Graphique
         ### Votre système de veille intelligente avec IA et abonnements
         """)
         
         # Tabs principales
         with gr.Tabs():
             
-            # ═══════════════════════════════════════════════════════════════
             # TAB 1 : RECHERCHE
-            # ═══════════════════════════════════════════════════════════════
-            with gr.Tab("🔍 Recherche"):
+            with gr.Tab("Recherche"):
                 gr.Markdown("### Rechercher des articles par mot-clé")
                 
                 with gr.Row():
@@ -277,20 +295,40 @@ def create_interface():
                         placeholder="Ex: tennis, football, Macron...",
                         scale=3
                     )
-                    search_btn = gr.Button("🔍 Chercher", variant="primary", scale=1)
+                    search_btn = gr.Button("Chercher", variant="primary", scale=1)
                 
                 search_output = gr.Markdown(label="Résultats")
                 
+                gr.Markdown("---")
+                gr.Markdown("### Actions sur les résultats")
+                
+                with gr.Row():
+                    send_to_me_btn = gr.Button(
+                        "M'envoyer ces résultats par email", 
+                        variant="secondary",
+                        size="lg"
+                    )
+                
+                send_to_me_output = gr.Markdown()
+                
+                gr.Markdown("""
+                **Note:** Pour envoyer à plusieurs abonnés, utilisez l'onglet "Envoyer Email"
+                """)
+                
+                # Actions
                 search_btn.click(
                     fn=search_articles,
                     inputs=search_input,
                     outputs=search_output
                 )
+                
+                send_to_me_btn.click(
+                    fn=send_to_me,
+                    outputs=send_to_me_output
+                )
             
-            # ═══════════════════════════════════════════════════════════════
             # TAB 2 : DERNIERS ARTICLES
-            # ═══════════════════════════════════════════════════════════════
-            with gr.Tab("📰 Derniers Articles"):
+            with gr.Tab("Derniers Articles"):
                 gr.Markdown("### Articles récemment collectés")
                 
                 with gr.Row():
@@ -301,7 +339,7 @@ def create_interface():
                         step=5,
                         label="Nombre d'articles à afficher"
                     )
-                    refresh_btn = gr.Button("🔄 Rafraîchir", variant="secondary")
+                    refresh_btn = gr.Button("Rafraîchir", variant="secondary")
                 
                 latest_output = gr.Markdown()
                 
@@ -317,16 +355,14 @@ def create_interface():
                     outputs=latest_output
                 )
             
-            # ═══════════════════════════════════════════════════════════════
             # TAB 3 : S'ABONNER
-            # ═══════════════════════════════════════════════════════════════
-            with gr.Tab("✉️ S'abonner"):
+            with gr.Tab("S'abonner"):
                 gr.Markdown("""
                 ### S'abonner à la newsletter Nexus
                 
-                Recevez automatiquement les meilleurs articles sélectionnés par Gemini AI.
+                Recevez automatiquement les meilleurs articles sélectionnés par Gemini AI
                 
-                🎯 **Fonctionnalités :**
+                **Fonctionnalités:**
                 - Email de confirmation immédiat
                 - Newsletter quotidienne à 7h du matin
                 - Articles analysés par IA (sentiment + résumé)
@@ -339,7 +375,7 @@ def create_interface():
                         placeholder="exemple@email.com",
                         scale=3
                     )
-                    subscribe_btn = gr.Button("✉️ S'abonner", variant="primary", scale=1)
+                    subscribe_btn = gr.Button("S'abonner", variant="primary", scale=1)
                 
                 subscribe_output = gr.Markdown()
                 
@@ -351,9 +387,9 @@ def create_interface():
                 
                 gr.Markdown("---")
                 
-                gr.Markdown("### 👥 Liste des abonnés")
+                gr.Markdown("### Liste des abonnés")
                 
-                list_btn = gr.Button("📋 Afficher les abonnés", variant="secondary")
+                list_btn = gr.Button("Afficher les abonnés", variant="secondary")
                 list_output = gr.Markdown()
                 
                 list_btn.click(
@@ -361,21 +397,19 @@ def create_interface():
                     outputs=list_output
                 )
             
-            # ═══════════════════════════════════════════════════════════════
             # TAB 4 : ENVOYER EMAIL
-            # ═══════════════════════════════════════════════════════════════
-            with gr.Tab("📧 Envoyer Email"):
+            with gr.Tab("Envoyer Email"):
                 gr.Markdown("""
                 ### Envoyer la newsletter à tous les abonnés
                 
-                Cette fonction envoie la newsletter à **TOUS** les abonnés actifs.
+                Cette fonction envoie la newsletter à **TOUS** les abonnés actifs
                 
-                📋 **Contenu envoyé :**
-                - Si vous venez de faire une recherche : les articles trouvés
-                - Sinon : les 10 derniers articles de la base de données
+                **Contenu envoyé:**
+                - Si vous venez de faire une recherche: les articles trouvés
+                - Sinon: les 10 derniers articles de la base de données
                 """)
                 
-                send_btn = gr.Button("📧 Envoyer la Newsletter à tous les abonnés", variant="primary", size="lg")
+                send_btn = gr.Button("Envoyer la Newsletter à tous les abonnés", variant="primary", size="lg")
                 send_output = gr.Markdown()
                 
                 send_btn.click(
@@ -383,13 +417,11 @@ def create_interface():
                     outputs=send_output
                 )
             
-            # ═══════════════════════════════════════════════════════════════
             # TAB 5 : STATISTIQUES
-            # ═══════════════════════════════════════════════════════════════
-            with gr.Tab("📊 Statistiques"):
+            with gr.Tab("Statistiques"):
                 gr.Markdown("### Analyse des données collectées")
                 
-                stats_btn = gr.Button("📊 Générer les Statistiques", variant="primary")
+                stats_btn = gr.Button("Générer les Statistiques", variant="primary")
                 
                 with gr.Row():
                     stats_text = gr.Markdown()
@@ -408,12 +440,12 @@ def create_interface():
         # Footer
         gr.Markdown("""
         ---
-        💡 **Astuces :**
-        - Abonnez-vous (et vos amis) pour recevoir les newsletters automatiquement
+        **Astuces:**
+        - Abonnez-vous pour recevoir les newsletters automatiquement
         - Les articles sont analysés avec BERT (sentiment) et Gemini AI (importance)
         - Les newsletters sont envoyées tous les matins à 7h via GitHub Actions
         
-        🔧 **Powered by** NewsAPI + Gemini AI + BERT + Transformers + Resend
+        **Powered by** NewsAPI + Gemini AI + BERT + Transformers + Resend
         """)
     
     return interface
@@ -423,11 +455,11 @@ def create_interface():
 # ═══════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    print("🚀 Lancement de l'interface Nexus...")
-    print(f"🔑 NewsAPI : {'✅ Configuré' if os.getenv('NEWSAPI_KEY') else '❌ Non configuré'}")
-    print(f"📨 Resend : {'✅ Configuré' if os.getenv('RESEND_API_KEY') else '❌ Non configuré'}")
-    print(f"🤖 Gemini : {'✅ Configuré' if os.getenv('GEMINI_API_KEY') else '❌ Non configuré'}")
-    print("\n🌐 Ouverture dans votre navigateur...")
+    print("Lancement de l'interface Nexus...")
+    print(f"NewsAPI: {'Configuré' if os.getenv('NEWSAPI_KEY') else 'Non configuré'}")
+    print(f"Resend: {'Configuré' if os.getenv('RESEND_API_KEY') else 'Non configuré'}")
+    print(f"Gemini: {'Configuré' if os.getenv('GEMINI_API_KEY') else 'Non configuré'}")
+    print("\nOuverture dans votre navigateur...")
     
     interface = create_interface()
     interface.launch(
